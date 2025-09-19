@@ -12,7 +12,7 @@ import (
 type Repository interface {
 	CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error)
 	GetCommentsByParentID(ctx context.Context, parentID uuid.UUID) ([]model.Comment, error)
-	GetComments(ctx context.Context, parentID uuid.UUID, search string, sort string, limit, offset int) ([]model.Comment, error)
+	GetComments(ctx context.Context, parentID *uuid.UUID, search string, sort string, limit, offset int) ([]model.Comment, error)
 	DeleteComment(ctx context.Context, id uuid.UUID) error
 }
 
@@ -37,7 +37,7 @@ func (s *Service) GetCommentsByParentID(ctx context.Context, parentID uuid.UUID)
 }
 
 // GetComments returns comments by parent ID with optional search, sorting, and pagination.
-func (s *Service) GetComments(ctx context.Context, parentID uuid.UUID, search, sort string, limit, offset int) ([]model.Comment, error) {
+func (s *Service) GetComments(ctx context.Context, parentID *uuid.UUID, search, sort string, limit, offset int) ([]model.Comment, error) {
 	return s.repo.GetComments(ctx, parentID, search, sort, limit, offset)
 }
 

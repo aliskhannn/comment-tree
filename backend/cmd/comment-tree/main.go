@@ -8,7 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/wb-go/wbf/dbpg"
 	"github.com/wb-go/wbf/redis"
 	"github.com/wb-go/wbf/zlog"
@@ -27,7 +26,6 @@ func main() {
 
 	zlog.Init()
 	cfg := config.Must()
-	val := validator.New()
 
 	// Connect to PostgreSQL master and slave databases.
 	opts := &dbpg.Options{
@@ -63,7 +61,7 @@ func main() {
 	// Initialize comment repository, service and handlers.
 	repo := commentrepo.NewRepository(db)
 	service := commentsvc.NewService(repo)
-	handler := comment.NewHandler(service, val)
+	handler := comment.NewHandler(service)
 
 	// Start HTTP server
 	r := router.New(handler)

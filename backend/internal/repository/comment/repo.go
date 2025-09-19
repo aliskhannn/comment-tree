@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wb-go/wbf/dbpg"
+	"github.com/wb-go/wbf/zlog"
 
 	"github.com/aliskhannn/comment-tree/internal/model"
 )
@@ -26,15 +27,18 @@ func NewRepository(db *dbpg.DB) *Repository {
 // CreateComment creates a new comment.
 func (r *Repository) CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error) {
 	query := `
-		INSERT INTO comments (id, parent_id, content)
-		VALUES ($1, $2, $3)
+		INSERT INTO comments (parent_id, content)
+		VALUES ($1, $2)
 		RETURNING id
 	`
 
+	zlog.Logger.Printf("repo: parent id: %v", comment.ParentID)
+
 	var id uuid.UUID
+
 	err := r.db.Master.QueryRowContext(
 		ctx, query,
-		comment.ID, comment.ParentID, comment.Content,
+		comment.ParentID, comment.Content,
 	).Scan(&id)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to create comment: %w", err)
@@ -57,7 +61,7 @@ func (r *Repository) GetCommentsByParentID(ctx context.Context, parentID uuid.UU
 		)
 		SELECT 
 			id,
-			COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid) AS parent_id,
+			parent_id,
 			content,
 			created_at,
 			updated_at
@@ -93,46 +97,38 @@ func (r *Repository) GetCommentsByParentID(ctx context.Context, parentID uuid.UU
 }
 
 // GetComments retrieves comments by parent ID with optional search, sorting, and pagination.
-func (r *Repository) GetComments(ctx context.Context, parentID uuid.UUID, search string, sort string, limit, offset int) ([]model.Comment, error) {
-	// Default sorting is by created_at ascending.
-	sortColumn := "created_at"
-	sortOrder := "ASC"
+func (r *Repository) GetComments(ctx context.Context, parentID *uuid.UUID, search string, sort string, limit, offset int) ([]model.Comment, error) {
+	query := `SELECT id, parent_id, content, created_at, updated_at FROM comments WHERE 1=1`
+	args := []interface{}{}
+	argIdx := 1
 
-	// Map the "sort" parameter to allowed sort options.
-	switch sort {
-	case "created_at_desc":
-		sortColumn, sortOrder = "created_at", "DESC"
-	case "updated_at_asc":
-		sortColumn, sortOrder = "updated_at", "ASC"
-	case "updated_at_desc":
-		sortColumn, sortOrder = "updated_at", "DESC"
+	if parentID != nil {
+		query += fmt.Sprintf(" AND parent_id = $%d", argIdx)
+		args = append(args, *parentID)
+		argIdx++
 	}
 
-	// Build the SQL query dynamically with optional full-text search.
-	query := fmt.Sprintf(`
-		SELECT id, parent_id, content, created_at, updated_at
-		FROM comments
-		WHERE parent_id = $1
-		%s
-		ORDER BY %s %s
-		LIMIT $3 OFFSET $4;	
-    `,
-		// If search is not empty, add full-text search condition.
-		func() string {
-			if search != "" {
-				return "AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)"
-			}
-			return ""
-		}(), sortColumn, sortOrder,
-	)
-
-	// Prepare query arguments based on whether search is provided.
-	args := []interface{}{parentID}
 	if search != "" {
-		args = append(args, search, limit, offset)
-	} else {
-		args = append(args, limit, offset)
+		query += fmt.Sprintf(" AND to_tsvector('english', content) @@ plainto_tsquery('english', $%d)", argIdx)
+		args = append(args, search)
+		argIdx++
 	}
+
+	allowedSorts := map[string]string{
+		"created_asc":  "created_at ASC",
+		"created_desc": "created_at DESC",
+		"updated_asc":  "updated_at ASC",
+		"updated_desc": "updated_at DESC",
+	}
+
+	if sortSQL, ok := allowedSorts[sort]; ok {
+		query += " ORDER BY " + sortSQL
+	} else {
+		query += " ORDER BY created_at DESC" // По умолчанию
+	}
+
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, limit, offset)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -146,7 +142,6 @@ func (r *Repository) GetComments(ctx context.Context, parentID uuid.UUID, search
 		if err := rows.Scan(&c.ID, &c.ParentID, &c.Content, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan comment: %w", err)
 		}
-
 		comments = append(comments, c)
 	}
 
@@ -154,7 +149,6 @@ func (r *Repository) GetComments(ctx context.Context, parentID uuid.UUID, search
 		return nil, fmt.Errorf("failed to get comments: %w", err)
 	}
 
-	// Return custom error if no comments were found.
 	if len(comments) == 0 {
 		return nil, ErrCommentNotFound
 	}

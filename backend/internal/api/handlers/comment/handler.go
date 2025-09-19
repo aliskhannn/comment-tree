@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/wb-go/wbf/ginext"
 	"github.com/wb-go/wbf/zlog"
@@ -21,28 +20,26 @@ import (
 type Service interface {
 	CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error)
 	GetCommentsByParentID(ctx context.Context, parentID uuid.UUID) ([]model.Comment, error)
-	GetComments(ctx context.Context, parentID uuid.UUID, search, sort string, limit, offset int) ([]model.Comment, error)
+	GetComments(ctx context.Context, parentID *uuid.UUID, search, sort string, limit, offset int) ([]model.Comment, error)
 	DeleteComment(ctx context.Context, id uuid.UUID) error
 }
 
 // Handler is the handler for the comment API.
 type Handler struct {
-	service   Service
-	validator *validator.Validate
+	service Service
 }
 
 // NewHandler creates a new Handler.
-func NewHandler(service Service, v *validator.Validate) *Handler {
+func NewHandler(service Service) *Handler {
 	return &Handler{
-		service:   service,
-		validator: v,
+		service: service,
 	}
 }
 
 // CreateRequest is the request for the create comment API.
 type CreateRequest struct {
-	ParentID uuid.UUID `json:"parent_id"`
-	Content  string    `json:"content" binding:"required,min=1,max=1000"`
+	ParentID *uuid.UUID `json:"parent_id"`
+	Content  string     `json:"content" binding:"required,min=1,max=1000"`
 }
 
 // Create creates a new comment.
@@ -55,18 +52,22 @@ func (h *Handler) Create(c *ginext.Context) {
 		return
 	}
 
-	// Validate request fields.
-	if err := h.validator.Struct(req); err != nil {
-		zlog.Logger.Error().Err(err).Msg("failed to validate request")
-		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid request"))
-		return
+	zlog.Logger.Printf("parent id before: %v", req.ParentID)
+
+	var parentID *uuid.UUID
+	if req.ParentID == nil {
+		parentID = nil
+	} else {
+		parentID = req.ParentID
 	}
 
 	// Create the comment.
 	cm := &model.Comment{
-		ParentID: req.ParentID,
+		ParentID: parentID,
 		Content:  req.Content,
 	}
+
+	zlog.Logger.Printf("parent id in comment after: %v", parentID)
 
 	id, err := h.service.CreateComment(c, cm)
 	if err != nil {
@@ -79,14 +80,14 @@ func (h *Handler) Create(c *ginext.Context) {
 
 // Get retrieves the comment with the given ID and all nested descendants.
 func (h *Handler) Get(c *ginext.Context) {
-	// Extract parentID from query string (?parent=...).
-	parentIDStr := c.Query("parent")
-	if parentIDStr == "" {
+	// Extract id from query params.
+	idStr := c.Param("id")
+	if idStr == "" {
 		zlog.Logger.Warn().Msg("parent id is required")
 		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("parent id is required"))
 		return
 	}
-	parentID, err := uuid.Parse(parentIDStr)
+	id, err := uuid.Parse(idStr)
 	if err != nil {
 		zlog.Logger.Error().Err(err).Msg("failed to parse parent id")
 		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid parent id"))
@@ -94,7 +95,7 @@ func (h *Handler) Get(c *ginext.Context) {
 	}
 
 	// Get comments.
-	comments, err := h.service.GetCommentsByParentID(c.Request.Context(), parentID)
+	comments, err := h.service.GetCommentsByParentID(c.Request.Context(), id)
 	if err != nil {
 		// If no comments are found, return 404 Not Found.
 		if errors.Is(err, comment.ErrCommentNotFound) {
@@ -142,7 +143,7 @@ func (h *Handler) GetList(c *ginext.Context) {
 		offset = 0
 	}
 
-	comments, err := h.service.GetComments(c.Request.Context(), parentID, search, sort, limit, offset)
+	comments, err := h.service.GetComments(c.Request.Context(), &parentID, search, sort, limit, offset)
 	if err != nil {
 		if errors.Is(err, comment.ErrCommentNotFound) {
 			zlog.Logger.Error().Err(err).Msg("comment not found")
@@ -161,15 +162,21 @@ func (h *Handler) GetList(c *ginext.Context) {
 // Delete deletes the comment with the given ID and all nested descendants.
 func (h *Handler) Delete(c *ginext.Context) {
 	// Extract id from query params.
-	id := c.Param("id")
-	if id == "" {
-		zlog.Logger.Warn().Msg("id is required")
-		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("id is required"))
+	idStr := c.Param("id")
+	if idStr == "" {
+		zlog.Logger.Warn().Msg("parent id is required")
+		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("parent id is required"))
+		return
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		zlog.Logger.Error().Err(err).Msg("failed to parse parent id")
+		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid parent id"))
 		return
 	}
 
 	// Delete comment.
-	err := h.service.DeleteComment(c.Request.Context(), uuid.MustParse(id))
+	err = h.service.DeleteComment(c.Request.Context(), id)
 	if err != nil {
 		// If comment not found, return 404.
 		if errors.Is(err, comment.ErrCommentNotFound) {
