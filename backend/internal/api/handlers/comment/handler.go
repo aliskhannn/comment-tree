@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/wb-go/wbf/ginext"
@@ -19,6 +20,7 @@ import (
 type Service interface {
 	CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error)
 	GetCommentsByParentID(ctx context.Context, parentID uuid.UUID) ([]model.Comment, error)
+	GetComments(ctx context.Context, parentID uuid.UUID, search, sort string, limit, offset int) ([]model.Comment, error)
 	DeleteComment(ctx context.Context, id uuid.UUID) error
 }
 
@@ -66,20 +68,74 @@ func (h *Handler) Create(c *ginext.Context) {
 // Get retrieves the comment with the given ID and all nested descendants.
 func (h *Handler) Get(c *ginext.Context) {
 	// Extract parentID from query string (?parent=...).
-	parentID := c.Query("parent")
-	if parentID == "" {
+	parentIDStr := c.Query("parent")
+	if parentIDStr == "" {
 		zlog.Logger.Warn().Msg("parent id is required")
 		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("parent id is required"))
 		return
 	}
+	parentID, err := uuid.Parse(parentIDStr)
+	if err != nil {
+		zlog.Logger.Error().Err(err).Msg("failed to parse parent id")
+		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid parent id"))
+		return
+	}
 
 	// Get comments.
-	comments, err := h.service.GetCommentsByParentID(c.Request.Context(), uuid.MustParse(parentID))
+	comments, err := h.service.GetCommentsByParentID(c.Request.Context(), parentID)
 	if err != nil {
 		// If no comments are found, return 404 Not Found.
 		if errors.Is(err, comment.ErrCommentNotFound) {
 			zlog.Logger.Error().Err(err).Msg("comment not found")
 			respond.Fail(c.Writer, http.StatusNotFound, fmt.Errorf("comment not found"))
+		}
+
+		zlog.Logger.Error().Err(err).Msg("failed to get comments")
+		respond.Fail(c.Writer, http.StatusInternalServerError, fmt.Errorf("failed to get comments"))
+		return
+	}
+
+	respond.JSON(c.Writer, http.StatusOK, comments)
+}
+
+// GetList retrieves comments with pagination, sorting, and optional search.
+func (h *Handler) GetList(c *ginext.Context) {
+	// Get query params.
+	parentIDStr := c.Query("parent")
+	if parentIDStr == "" {
+		zlog.Logger.Warn().Msg("parent id is required")
+		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("parent id is required"))
+		return
+	}
+	parentID, err := uuid.Parse(parentIDStr)
+	if err != nil {
+		zlog.Logger.Error().Err(err).Msg("failed to parse parent id")
+		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid parent id"))
+		return
+	}
+
+	search := c.Query("search")
+	sort := c.DefaultQuery("sort", "created_at_asc")
+
+	limitStr := c.DefaultQuery("limit", "10")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 10
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	comments, err := h.service.GetComments(c.Request.Context(), parentID, search, sort, limit, offset)
+	if err != nil {
+		if errors.Is(err, comment.ErrCommentNotFound) {
+			zlog.Logger.Error().Err(err).Msg("comment not found")
+			respond.Fail(c.Writer, http.StatusNotFound, fmt.Errorf("no comments found"))
+			return
 		}
 
 		zlog.Logger.Error().Err(err).Msg("failed to get comments")

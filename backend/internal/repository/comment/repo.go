@@ -71,7 +71,7 @@ func (r *Repository) GetCommentsByParentID(ctx context.Context, parentID uuid.UU
 	}
 	defer rows.Close()
 
-	comments := []model.Comment{}
+	var comments []model.Comment
 	for rows.Next() {
 		var comment model.Comment
 		err := rows.Scan(&comment.ID, &comment.ParentID, &comment.Content, &comment.CreatedAt, &comment.UpdatedAt)
@@ -85,6 +85,76 @@ func (r *Repository) GetCommentsByParentID(ctx context.Context, parentID uuid.UU
 		return nil, fmt.Errorf("failed to get comments by parent ID: %w", err)
 	}
 
+	if len(comments) == 0 {
+		return nil, ErrCommentNotFound
+	}
+
+	return comments, nil
+}
+
+// GetComments retrieves comments by parent ID with optional search, sorting, and pagination.
+func (r *Repository) GetComments(ctx context.Context, parentID uuid.UUID, search string, sort string, limit, offset int) ([]model.Comment, error) {
+	// Default sorting is by created_at ascending.
+	sortColumn := "created_at"
+	sortOrder := "ASC"
+
+	// Map the "sort" parameter to allowed sort options.
+	switch sort {
+	case "created_at_desc":
+		sortColumn, sortOrder = "created_at", "DESC"
+	case "updated_at_asc":
+		sortColumn, sortOrder = "updated_at", "ASC"
+	case "updated_at_desc":
+		sortColumn, sortOrder = "updated_at", "DESC"
+	}
+
+	// Build the SQL query dynamically with optional full-text search.
+	query := fmt.Sprintf(`
+		SELECT id, parent_id, content, created_at, updated_at
+		FROM comments
+		WHERE parent_id = $1
+		%s
+		ORDER BY %s %s
+		LIMIT $3 OFFSET $4;	
+    `,
+		// If search is not empty, add full-text search condition.
+		func() string {
+			if search != "" {
+				return "AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)"
+			}
+			return ""
+		}(), sortColumn, sortOrder,
+	)
+
+	// Prepare query arguments based on whether search is provided.
+	args := []interface{}{parentID}
+	if search != "" {
+		args = append(args, search, limit, offset)
+	} else {
+		args = append(args, limit, offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+	defer rows.Close()
+
+	var comments []model.Comment
+	for rows.Next() {
+		var c model.Comment
+		if err := rows.Scan(&c.ID, &c.ParentID, &c.Content, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan comment: %w", err)
+		}
+
+		comments = append(comments, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+
+	// Return custom error if no comments were found.
 	if len(comments) == 0 {
 		return nil, ErrCommentNotFound
 	}
