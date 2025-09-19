@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/wb-go/wbf/ginext"
 	"github.com/wb-go/wbf/zlog"
@@ -26,12 +27,16 @@ type Service interface {
 
 // Handler is the handler for the comment API.
 type Handler struct {
-	service Service
+	service   Service
+	validator *validator.Validate
 }
 
 // NewHandler creates a new Handler.
-func NewHandler(service Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service Service, v *validator.Validate) *Handler {
+	return &Handler{
+		service:   service,
+		validator: v,
+	}
 }
 
 // CreateRequest is the request for the create comment API.
@@ -47,6 +52,13 @@ func (h *Handler) Create(c *ginext.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		zlog.Logger.Error().Err(err).Msg("failed to bind JSON")
 		respond.Fail(c.Writer, http.StatusBadRequest, err)
+		return
+	}
+
+	// Validate request fields.
+	if err := h.validator.Struct(req); err != nil {
+		zlog.Logger.Error().Err(err).Msg("failed to validate request")
+		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid request"))
 		return
 	}
 
