@@ -10,7 +10,7 @@ import (
 
 // Repository provides methods for interacting with the comments table.
 type Repository interface {
-	CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error)
+	CreateComment(ctx context.Context, comment *model.Comment) (model.Comment, error)
 	GetCommentsByParentID(ctx context.Context, parentID uuid.UUID) ([]model.Comment, error)
 	GetComments(ctx context.Context, parentID *uuid.UUID, search string, sort string, limit, offset int) ([]model.Comment, error)
 	DeleteComment(ctx context.Context, id uuid.UUID) error
@@ -27,7 +27,7 @@ func NewService(repo Repository) *Service {
 }
 
 // CreateComment creates a new comment.
-func (s *Service) CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error) {
+func (s *Service) CreateComment(ctx context.Context, comment *model.Comment) (model.Comment, error) {
 	return s.repo.CreateComment(ctx, comment)
 }
 

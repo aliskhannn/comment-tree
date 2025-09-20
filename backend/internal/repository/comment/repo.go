@@ -25,26 +25,26 @@ func NewRepository(db *dbpg.DB) *Repository {
 }
 
 // CreateComment creates a new comment.
-func (r *Repository) CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error) {
+func (r *Repository) CreateComment(ctx context.Context, comment *model.Comment) (model.Comment, error) {
 	query := `
 		INSERT INTO comments (parent_id, content)
 		VALUES ($1, $2)
-		RETURNING id
+		RETURNING id, parent_id, content, created_at, updated_at
 	`
 
 	zlog.Logger.Printf("repo: parent id: %v", comment.ParentID)
 
-	var id uuid.UUID
+	var c model.Comment
 
 	err := r.db.Master.QueryRowContext(
 		ctx, query,
 		comment.ParentID, comment.Content,
-	).Scan(&id)
+	).Scan(&c.ID, &c.ParentID, &c.Content, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("failed to create comment: %w", err)
+		return model.Comment{}, fmt.Errorf("failed to create comment: %w", err)
 	}
 
-	return id, nil
+	return c, nil
 }
 
 // GetCommentsByParentID returns the comment with the given ID and all nested descendants.

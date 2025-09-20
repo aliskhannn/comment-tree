@@ -18,7 +18,7 @@ import (
 
 // Service is the interface for the comment service.
 type Service interface {
-	CreateComment(ctx context.Context, comment *model.Comment) (uuid.UUID, error)
+	CreateComment(ctx context.Context, comment *model.Comment) (model.Comment, error)
 	GetCommentsByParentID(ctx context.Context, parentID uuid.UUID) ([]model.Comment, error)
 	GetComments(ctx context.Context, parentID *uuid.UUID, search, sort string, limit, offset int) ([]model.Comment, error)
 	DeleteComment(ctx context.Context, id uuid.UUID) error
@@ -69,17 +69,17 @@ func (h *Handler) Create(c *ginext.Context) {
 
 	zlog.Logger.Printf("parent id in comment after: %v", parentID)
 
-	id, err := h.service.CreateComment(c, cm)
+	res, err := h.service.CreateComment(c, cm)
 	if err != nil {
 		respond.Fail(c.Writer, http.StatusInternalServerError, err)
 		return
 	}
 
-	respond.Created(c.Writer, id)
+	respond.Created(c.Writer, res)
 }
 
-// Get retrieves the comment with the given ID and all nested descendants.
-func (h *Handler) Get(c *ginext.Context) {
+// GetTree retrieves the comment with the given ID and all nested descendants.
+func (h *Handler) GetTree(c *ginext.Context) {
 	// Extract id from query params.
 	idStr := c.Param("id")
 	if idStr == "" {
@@ -115,16 +115,15 @@ func (h *Handler) Get(c *ginext.Context) {
 func (h *Handler) GetList(c *ginext.Context) {
 	// Get query params.
 	parentIDStr := c.Query("parent")
-	if parentIDStr == "" {
-		zlog.Logger.Warn().Msg("parent id is required")
-		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("parent id is required"))
-		return
-	}
-	parentID, err := uuid.Parse(parentIDStr)
-	if err != nil {
-		zlog.Logger.Error().Err(err).Msg("failed to parse parent id")
-		respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid parent id"))
-		return
+	var parentID *uuid.UUID
+	if parentIDStr != "" {
+		id, err := uuid.Parse(parentIDStr)
+		if err != nil {
+			zlog.Logger.Error().Err(err).Msg("failed to parse parent id")
+			respond.Fail(c.Writer, http.StatusBadRequest, fmt.Errorf("invalid parent id"))
+			return
+		}
+		parentID = &id
 	}
 
 	search := c.Query("search")
@@ -143,7 +142,7 @@ func (h *Handler) GetList(c *ginext.Context) {
 		offset = 0
 	}
 
-	comments, err := h.service.GetComments(c.Request.Context(), &parentID, search, sort, limit, offset)
+	comments, err := h.service.GetComments(c.Request.Context(), parentID, search, sort, limit, offset)
 	if err != nil {
 		if errors.Is(err, comment.ErrCommentNotFound) {
 			zlog.Logger.Error().Err(err).Msg("comment not found")
