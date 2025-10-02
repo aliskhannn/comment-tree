@@ -36,7 +36,7 @@ func (r *Repository) CreateComment(ctx context.Context, comment *model.Comment) 
 
 	var c model.Comment
 
-	err := r.db.Master.QueryRowContext(
+	err := r.db.QueryRowContext(
 		ctx, query,
 		comment.ParentID, comment.Content,
 	).Scan(&c.ID, &c.ParentID, &c.Content, &c.CreatedAt, &c.UpdatedAt)
@@ -170,7 +170,7 @@ func (r *Repository) DeleteComment(ctx context.Context, id uuid.UUID) error {
 		WHERE id IN (SELECT id FROM to_delete);
 	`
 
-	rows, err := r.db.Master.ExecContext(ctx, query, id)
+	rows, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete comment: %w", err)
 	}
