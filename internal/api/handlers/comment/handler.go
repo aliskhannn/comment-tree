@@ -97,12 +97,6 @@ func (h *Handler) GetTree(c *ginext.Context) {
 	// Get comments.
 	comments, err := h.service.GetCommentsByParentID(c.Request.Context(), id)
 	if err != nil {
-		// If no comments are found, return 404 Not Found.
-		if errors.Is(err, comment.ErrCommentNotFound) {
-			zlog.Logger.Error().Err(err).Msg("comment not found")
-			respond.Fail(c.Writer, http.StatusNotFound, fmt.Errorf("comment not found"))
-		}
-
 		zlog.Logger.Error().Err(err).Msg("failed to get comments")
 		respond.Fail(c.Writer, http.StatusInternalServerError, fmt.Errorf("failed to get comments"))
 		return
@@ -144,12 +138,6 @@ func (h *Handler) GetList(c *ginext.Context) {
 
 	comments, err := h.service.GetComments(c.Request.Context(), parentID, search, sort, limit, offset)
 	if err != nil {
-		if errors.Is(err, comment.ErrCommentNotFound) {
-			zlog.Logger.Error().Err(err).Msg("comment not found")
-			respond.Fail(c.Writer, http.StatusNotFound, fmt.Errorf("no comments found"))
-			return
-		}
-
 		zlog.Logger.Error().Err(err).Msg("failed to get comments")
 		respond.Fail(c.Writer, http.StatusInternalServerError, fmt.Errorf("failed to get comments"))
 		return

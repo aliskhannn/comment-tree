@@ -89,10 +89,6 @@ func (r *Repository) GetCommentsByParentID(ctx context.Context, parentID uuid.UU
 		return nil, fmt.Errorf("failed to get comments by parent ID: %w", err)
 	}
 
-	if len(comments) == 0 {
-		return nil, ErrCommentNotFound
-	}
-
 	return comments, nil
 }
 
@@ -147,10 +143,6 @@ func (r *Repository) GetComments(ctx context.Context, parentID *uuid.UUID, searc
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to get comments: %w", err)
-	}
-
-	if len(comments) == 0 {
-		return nil, ErrCommentNotFound
 	}
 
 	return comments, nil
