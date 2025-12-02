@@ -18,24 +18,23 @@
 
 ```
 .
-├── backend/                 # Backend service
-│   ├── cmd/                 # Application entry points
-│   ├── config/              # Configuration files
-│   ├── internal/            # Internal application packages
-│   │   ├── api/             # HTTP handlers, router, server
-│   │   ├── config/          # Config parsing logic
-│   │   ├── middlewares/     # HTTP middlewares
-│   │── model/               # Data models
-│   │── repository/          # Database repositories
-│   │── service/             # Business logic
-│   ├── migrations/          # Database migrations
-│   ├── Dockerfile           # Backend Dockerfile
-│   ├── go.mod
-│   └── go.sum
-├── frontend/                # Frontend application (HTML + JS)
-├── .env.example             # Example environment variables
-├── docker-compose.yml       # Multi-service Docker setup
-├── Makefile                 # Development commands
+├── cmd/                 # Application entry points
+├── config/              # Configuration files
+├── internal/            # Internal application packages
+│   ├── api/             # HTTP handlers, router, server
+│   ├── config/          # Config parsing logic
+│   ├── middlewares/     # HTTP middlewares
+│   ├── model/           # Data models
+│   ├── repository/      # Database repositories
+│   ├── service/         # Business logic
+├── migrations/          # Database migrations
+├── website/             # Frontend application (HTML + JS)
+├── .env.example         # Example environment variables
+├── docker-compose.yml   # Multi-service Docker setup
+├── Dockerfile           # Backend Dockerfile
+├── go.mod
+├── go.sum
+├── Makefile             # Development commands
 └── README.md
 ```
 
